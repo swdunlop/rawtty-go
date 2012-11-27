@@ -8,7 +8,6 @@ type (
 	EventType uint8
 	Modifier  uint8
 	Key       uint16
-	Attribute uint16
 )
 
 // This type represents a termbox event. 'Mod', 'Key' and 'Ch' fields are valid
@@ -21,15 +20,6 @@ type Event struct {
 	Width  int       // width of the screen
 	Height int       // height of the screen
 	Err    error     // error in case if input failed
-}
-
-// A cell, single conceptual entity on the screen. The screen is basically a 2d
-// array of cells. 'Ch' is a unicode character, 'Fg' and 'Bg' are foreground
-// and background attributes respectively.
-type Cell struct {
-	Ch rune
-	Fg Attribute
-	Bg Attribute
 }
 
 // Key constants, see Event.Key field.
@@ -111,27 +101,6 @@ const (
 // Alt modifier constant, see Event.Mod field and SetInputMode function.
 const (
 	ModAlt Modifier = 0x01
-)
-
-// Cell attributes, it is possible to use multiple attributes by combining them
-// using bitwise OR ('|'). Although, colors cannot be combined. But you can
-// combine attributes and a single color.
-const (
-	ColorDefault Attribute = iota
-	ColorBlack
-	ColorRed
-	ColorGreen
-	ColorYellow
-	ColorBlue
-	ColorMagenta
-	ColorCyan
-	ColorWhite
-)
-
-const (
-	AttrBold Attribute = 1 << (iota + 4)
-	AttrUnderline
-	AttrReverse
 )
 
 // Input mode. See SetInputMode function.

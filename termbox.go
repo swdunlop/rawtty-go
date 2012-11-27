@@ -3,13 +3,10 @@
 package termbox
 
 import "unicode/utf8"
-import "bytes"
 import "syscall"
 import "unsafe"
 import "strings"
-import "strconv"
 import "os"
-import "io"
 
 // private API
 
@@ -29,11 +26,6 @@ const (
 	t_max_funcs
 )
 
-const (
-	coord_invalid = -2
-	attr_invalid  = Attribute(0xFFFF)
-)
-
 type input_event struct {
 	data []byte
 	err  error
@@ -45,58 +37,19 @@ var (
 	funcs []string
 
 	// termbox inner state
-	orig_tios    syscall_Termios
-	back_buffer  cellbuf
-	front_buffer cellbuf
-	termw        int
-	termh        int
-	input_mode   = InputEsc
-	out          *os.File
-	in           int
-	lastfg       = attr_invalid
-	lastbg       = attr_invalid
-	lastx        = coord_invalid
-	lasty        = coord_invalid
-	cursor_x     = cursor_hidden
-	cursor_y     = cursor_hidden
-	foreground   = ColorDefault
-	background   = ColorDefault
-	inbuf        = make([]byte, 0, 64)
-	outbuf       bytes.Buffer
-	sigwinch     = make(chan os.Signal, 1)
-	sigio        = make(chan os.Signal, 1)
-	quit         = make(chan int)
-	input_comm   = make(chan input_event)
-	intbuf       = make([]byte, 0, 16)
+	orig_tios  syscall_Termios
+	termw      int
+	termh      int
+	input_mode = InputEsc
+	out        *os.File
+	in         int
+	inbuf      = make([]byte, 0, 64)
+	sigwinch   = make(chan os.Signal, 1)
+	sigio      = make(chan os.Signal, 1)
+	quit       = make(chan int)
+	input_comm = make(chan input_event)
+	intbuf     = make([]byte, 0, 16)
 )
-
-func write_cursor(x, y int) {
-	outbuf.WriteString("\033[")
-	outbuf.Write(strconv.AppendUint(intbuf, uint64(y+1), 10))
-	outbuf.WriteString(";")
-	outbuf.Write(strconv.AppendUint(intbuf, uint64(x+1), 10))
-	outbuf.WriteString("H")
-}
-
-func write_sgr_fg(a Attribute) {
-	outbuf.WriteString("\033[3")
-	outbuf.Write(strconv.AppendUint(intbuf, uint64(a-1), 10))
-	outbuf.WriteString("m")
-}
-
-func write_sgr_bg(a Attribute) {
-	outbuf.WriteString("\033[4")
-	outbuf.Write(strconv.AppendUint(intbuf, uint64(a-1), 10))
-	outbuf.WriteString("m")
-}
-
-func write_sgr(fg, bg Attribute) {
-	outbuf.WriteString("\033[3")
-	outbuf.Write(strconv.AppendUint(intbuf, uint64(fg-1), 10))
-	outbuf.WriteString(";4")
-	outbuf.Write(strconv.AppendUint(intbuf, uint64(bg-1), 10))
-	outbuf.WriteString("m")
-}
 
 type winsize struct {
 	rows    uint16
@@ -110,87 +63,6 @@ func get_term_size(fd uintptr) (int, int) {
 	_, _, _ = syscall.Syscall(syscall.SYS_IOCTL,
 		fd, uintptr(syscall.TIOCGWINSZ), uintptr(unsafe.Pointer(&sz)))
 	return int(sz.cols), int(sz.rows)
-}
-
-func send_attr(fg, bg Attribute) {
-	if fg != lastfg || bg != lastbg {
-		outbuf.WriteString(funcs[t_sgr0])
-		fgcol := fg & 0x0F
-		bgcol := bg & 0x0F
-		if fgcol != ColorDefault {
-			if bgcol != ColorDefault {
-				write_sgr(fgcol, bgcol)
-			} else {
-				write_sgr_fg(fgcol)
-			}
-		} else if bgcol != ColorDefault {
-			write_sgr_bg(bgcol)
-		}
-
-		if fg&AttrBold != 0 {
-			outbuf.WriteString(funcs[t_bold])
-		}
-		if bg&AttrBold != 0 {
-			outbuf.WriteString(funcs[t_blink])
-		}
-		if fg&AttrUnderline != 0 {
-			outbuf.WriteString(funcs[t_underline])
-		}
-		if fg&AttrReverse|bg&AttrReverse != 0 {
-			outbuf.WriteString(funcs[t_reverse])
-		}
-
-		lastfg, lastbg = fg, bg
-	}
-}
-
-func send_char(x, y int, ch rune) {
-	var buf [8]byte
-	n := utf8.EncodeRune(buf[:], ch)
-	if x-1 != lastx || y != lasty {
-		write_cursor(x, y)
-	}
-	lastx, lasty = x, y
-	outbuf.Write(buf[:n])
-}
-
-func flush() error {
-	_, err := io.Copy(out, &outbuf)
-	outbuf.Reset()
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func send_clear() error {
-	send_attr(foreground, background)
-	outbuf.WriteString(funcs[t_clear_screen])
-	if !is_cursor_hidden(cursor_x, cursor_y) {
-		write_cursor(cursor_x, cursor_y)
-	}
-
-	// we need to invalidate cursor position too and these two vars are
-	// used only for simple cursor positioning optimization, cursor
-	// actually may be in the correct place, but we simply discard
-	// optimization once and it gives us simple solution for the case when
-	// cursor moved
-	lastx = coord_invalid
-	lasty = coord_invalid
-
-	return flush()
-}
-
-func update_size_maybe() error {
-	w, h := get_term_size(out.Fd())
-	if w != termw || h != termh {
-		termw, termh = w, h
-		back_buffer.resize(termw, termh)
-		front_buffer.resize(termw, termh)
-		front_buffer.clear()
-		return send_clear()
-	}
-	return nil
 }
 
 func tcsetattr(fd uintptr, termios *syscall_Termios) error {

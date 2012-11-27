@@ -35,35 +35,6 @@ func Init() error {
 		return err
 	}
 
-	w, h := get_win_size(out)
-	orig_screen = out
-	out, err = create_console_screen_buffer()
-	if err != nil {
-		return err
-	}
-
-	err = set_console_screen_buffer_size(out, coord{short(w), short(h)})
-	if err != nil {
-		return err
-	}
-
-	err = set_console_active_screen_buffer(out)
-	if err != nil {
-		return err
-	}
-
-	show_cursor(false)
-	termw, termh = get_term_size(out)
-	back_buffer.init(termw, termh)
-	front_buffer.init(termw, termh)
-	back_buffer.clear()
-	front_buffer.clear()
-	clear()
-
-	attrsbuf = make([]word, 0, termw*termh)
-	charsbuf = make([]wchar, 0, termw*termh)
-	diffbuf = make([]diff_msg, 0, 32)
-
 	go input_event_producer()
 
 	return nil
@@ -91,47 +62,6 @@ func Flush() error {
 	return nil
 }
 
-// Sets the position of the cursor. See also HideCursor().
-func SetCursor(x, y int) {
-	if is_cursor_hidden(cursor_x, cursor_y) && !is_cursor_hidden(x, y) {
-		show_cursor(true)
-	}
-
-	if !is_cursor_hidden(cursor_x, cursor_y) && is_cursor_hidden(x, y) {
-		show_cursor(false)
-	}
-
-	cursor_x, cursor_y = x, y
-	if !is_cursor_hidden(cursor_x, cursor_y) {
-		move_cursor(cursor_x, cursor_y)
-	}
-}
-
-// The shortcut for SetCursor(-1, -1).
-func HideCursor() {
-	SetCursor(cursor_hidden, cursor_hidden)
-}
-
-// Changes cell's parameters in the internal back buffer at the specified
-// position.
-func SetCell(x, y int, ch rune, fg, bg Attribute) {
-	if x < 0 || x >= back_buffer.width {
-		return
-	}
-	if y < 0 || y >= back_buffer.height {
-		return
-	}
-
-	back_buffer.cells[y*back_buffer.width+x] = Cell{ch, fg, bg}
-}
-
-// Returns a slice into the termbox's back buffer. You can get its dimensions
-// using 'Size' function. The slice remains valid as long as no 'Clear' or
-// 'Flush' function calls were made after call to this function.
-func CellBuffer() []Cell {
-	return back_buffer.cells
-}
-
 // Wait for an event and return it. This is a blocking function call.
 func PollEvent() Event {
 	return <-input_comm
@@ -141,14 +71,6 @@ func PollEvent() Event {
 // terminal's window size in characters).
 func Size() (int, int) {
 	return termw, termh
-}
-
-// Clears the internal back buffer.
-func Clear(fg, bg Attribute) error {
-	foreground, background = fg, bg
-	update_size_maybe()
-	back_buffer.clear()
-	return nil
 }
 
 // Sets termbox input mode. Termbox has two input modes:
